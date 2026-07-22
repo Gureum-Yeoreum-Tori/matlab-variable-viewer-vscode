@@ -8,7 +8,19 @@
     <img alt="Status: preview" src="https://img.shields.io/badge/status-preview-d69e2e">
     <img alt="Built with OpenAI Codex" src="https://img.shields.io/badge/built%20with-OpenAI%20Codex-111827">
   </p>
+  <p>
+    <a href="#install"><strong>Install</strong></a>
+    · <a href="#try-the-demo-workspace">Try the demo</a>
+    · <a href="VARIABLE_EDITOR_ARCHITECTURE.md">Architecture</a>
+    · <a href="https://github.com/Gureum-Yeoreum-Tori/matlab-variable-viewer-vscode/issues">Report a bug</a>
+  </p>
 </div>
+
+<p align="center">
+  <img src="docs/images/demos/variable-viewer-tour.webp" width="100%" alt="Animated tour of MATLAB Variable Viewer running in VS Code">
+</p>
+
+<p align="center"><sub>Real VS Code session connected to MATLAB R2026a — no UI mockups.</sub></p>
 
 > [!IMPORTANT]
 > This is an independent, unofficial fork of the
@@ -41,21 +53,49 @@ language-server features remain available.
 Formatting controls include `short`, `long`, scientific formats, column fitting,
 and bounded TSV copying.
 
-## Screenshots
+## See it in action
 
-### Expanded structure fields
+### Browse a 512 × 512 matrix without rendering 262,144 cells
 
-Nested matrices remain rectangular instead of being split into individual tree
-elements. Expanded fields stay open across automatic refreshes.
+The grid renders the visible region, keeps a larger page buffered around it,
+and prefetches near page boundaries. Scroll or use the explicit row and column
+controls while the toolbar shows both the viewport and buffer ranges.
 
-![Expanded structure fields](docs/images/expanded-struct-fields.png)
+![Animated large matrix navigation](docs/images/demos/large-matrix-navigation.webp)
 
-### Structure-array inspector
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <h3>Expand nested data</h3>
+      <p>Matrices inside structures stay rectangular. Open paths survive automatic refresh, and changed descendants receive a visible badge.</p>
+      <img src="docs/images/demos/struct-auto-refresh.webp" alt="Animated structure expansion and automatic refresh highlighting">
+    </td>
+    <td width="50%" valign="top">
+      <h3>Keep table metadata</h3>
+      <p>MATLAB table variable names become column headers, while row names and timetable row times remain visible.</p>
+      <img src="docs/images/table-with-headers.png" alt="MATLAB table with variable names and row names">
+    </td>
+  </tr>
+</table>
 
-Select a structure-array element to inspect its fields without flattening the
-entire array.
+### Navigate higher dimensions explicitly
 
-![Structure array inspector](docs/images/struct-array-inspector.png)
+Each dimension has previous, next, and direct-entry controls. The slice strip
+keeps nearby slices one click away and marks slices that changed while another
+slice was visible.
+
+![Animated N-D array slice navigation](docs/images/demos/nd-array-navigation.webp)
+
+<details>
+  <summary><strong>Open the static screenshot gallery</strong></summary>
+  <br>
+  <p><strong>Automatic descendant highlighting</strong></p>
+  <img src="docs/images/auto-refresh-highlights.png" alt="Changed structure descendants highlighted after automatic refresh">
+  <p><strong>Structure-array element inspector</strong></p>
+  <img src="docs/images/struct-array-inspector.png" alt="Selected structure-array element shown in the inspector drawer">
+  <p><strong>Higher-dimensional slice controls</strong></p>
+  <img src="docs/images/nd-array-slices.png" alt="Dimension controls and slice strip for a four-dimensional array">
+</details>
 
 ## Requirements
 
