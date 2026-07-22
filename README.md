@@ -17,7 +17,10 @@
 </div>
 
 <p align="center">
-  <img src="docs/images/demos/variable-viewer-tour.webp" width="100%" alt="Animated tour of MATLAB Variable Viewer running in VS Code">
+  <picture>
+    <source srcset="docs/images/demos/variable-viewer-tour.webp" type="image/webp">
+    <img src="docs/images/workspace-overview.png" width="100%" alt="Animated tour of MATLAB Variable Viewer running in VS Code">
+  </picture>
 </p>
 
 <p align="center"><sub>Real VS Code session connected to MATLAB R2026a — no UI mockups.</sub></p>
