@@ -7,7 +7,7 @@ Review target: Variable Editor fork version 1.4.0 and its three locked dependenc
 
 The Variable Editor has no identified direct MATLAB command-injection path in its current expression grammar, and no credentials or variable-value logging were found in the added source or packaged VSIX. The new Webview boundary, data transfer, refresh scheduling, clipboard output, and audited runtime dependency findings now have concrete controls.
 
-The source is suitable for public review. A Marketplace release remains blocked until the placeholder `unpublished` publisher is replaced, a clean Node 22 CI run succeeds, and the final VSIX is rebuilt and inspected from that tagged checkout.
+The source is suitable for public review and the first clean Node 22 CI run passed. A Marketplace release remains blocked until the placeholder `unpublished` publisher is replaced and the final VSIX is rebuilt and inspected from its tagged checkout.
 
 This is a source and dependency review, not a formal penetration test or a guarantee that the extension is vulnerability-free.
 
@@ -90,7 +90,7 @@ A public release should require all of the following:
 - [x] Patched production dependency audits for both client and server.
 - [x] Loopback-only licensing server and protected token file.
 - [x] Inherited outbound telemetry disabled.
-- [ ] Clean submodules and reproducible Node 22 `npm ci` build/package test.
+- [x] Clean submodules and reproducible Node 22 `npm ci` build/package test.
 - [ ] Fork-owned Marketplace publisher; repository URL, `name`, display name, icon, version, author, and new-file copyright are fork-owned.
 - [x] No secrets detected in the source tree; repeat against the final packaged VSIX.
 - [ ] Unit, workspace-browser, server, MATLAB integration, restore, and large-data tests pass. The 178 Workspace/Variable Editor tests and 240 language-server tests pass locally; MATLAB integration and clean-profile smoke tests remain.

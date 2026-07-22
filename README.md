@@ -3,6 +3,7 @@
   <h1>MATLAB Variable Viewer for VS Code</h1>
   <p>Inspect matrices, structures, cells, tables, and N-D arrays without leaving VS Code.</p>
   <p>
+    <a href="https://github.com/Gureum-Yeoreum-Tori/matlab-variable-viewer-vscode/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Gureum-Yeoreum-Tori/matlab-variable-viewer-vscode/actions/workflows/ci.yml/badge.svg"></a>
     <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-2f855a">
     <img alt="Status: preview" src="https://img.shields.io/badge/status-preview-d69e2e">
     <img alt="Built with OpenAI Codex" src="https://img.shields.io/badge/built%20with-OpenAI%20Codex-111827">
