@@ -66,20 +66,20 @@ controls while the toolbar shows both the viewport and buffer ranges.
 
 ![Animated large matrix navigation](docs/images/demos/large-matrix-navigation.webp)
 
-<table>
-  <tr>
-    <td width="50%" valign="top">
-      <h3>Expand nested data</h3>
-      <p>Matrices inside structures stay rectangular. Open paths survive automatic refresh, and changed descendants receive a visible badge.</p>
-      <img src="docs/images/demos/struct-auto-refresh.webp" alt="Animated structure expansion and automatic refresh highlighting">
-    </td>
-    <td width="50%" valign="top">
-      <h3>Keep table metadata</h3>
-      <p>MATLAB table variable names become column headers, while row names and timetable row times remain visible.</p>
-      <img src="docs/images/table-with-headers.png" alt="MATLAB table with variable names and row names">
-    </td>
-  </tr>
-</table>
+### Watch automatic updates arrive in place
+
+Matrices inside structures stay rectangular, and expanded paths remain open.
+When MATLAB changes a descendant value, the affected cell animates while its
+parent field receives a persistent change badge.
+
+![Animated automatic refresh and descendant highlighting](docs/images/demos/struct-auto-refresh.webp)
+
+### Keep table metadata readable
+
+MATLAB table variable names become column headers, while row names and
+timetable row times remain visible.
+
+![MATLAB table with variable names and row names](docs/images/table-with-headers.png)
 
 ### Navigate higher dimensions explicitly
 
