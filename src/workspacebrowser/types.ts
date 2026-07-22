@@ -56,4 +56,5 @@ export type WebviewToExt =
     | { type: 'renameVariable', variable: string, newName: string }
     | { type: 'deleteVariable', variable: string }
     | { type: 'stateChanged', state: SavedState }
+    | { type: 'openVariable', variable: string }
     | { type: 'openMaxVariablesSetting' }

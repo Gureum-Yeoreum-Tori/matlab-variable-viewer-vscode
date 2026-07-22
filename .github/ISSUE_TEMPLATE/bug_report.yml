@@ -1,0 +1,59 @@
+name: Bug report
+description: Report a reproducible problem in the unofficial fork
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include proprietary variable values, license tokens, credentials,
+        or unsanitized logs. Report security issues privately as described in
+        SECURITY.md.
+  - type: input
+    id: fork-version
+    attributes:
+      label: Fork version
+      placeholder: 1.4.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, VS Code version, and MATLAB release
+      placeholder: macOS 15, VS Code 1.xx, MATLAB R2026a
+    validations:
+      required: true
+  - type: input
+    id: variable
+    attributes:
+      label: Variable class and size
+      placeholder: 512x512 double, 1x3 struct, or 4x4x4 double
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include sanitized MATLAB code and exact UI actions.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed private values, tokens, credentials, and sensitive paths.
+          required: true
+        - label: I confirmed this report is not a security vulnerability.
+          required: true

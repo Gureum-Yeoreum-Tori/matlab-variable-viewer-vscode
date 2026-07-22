@@ -1,11 +1,36 @@
 # Change Log
 
-All notable changes to the "language-matlab" extension will be documented in this file.
+All notable changes to the unofficial MATLAB Variable Viewer fork will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+
+- MATLAB-style Variable Editor tabs opened by double-clicking Workspace variables.
+- Virtualized and prefetched matrix paging with table headers and bounded copying.
+- Scalar/non-scalar structure, cell, table, timetable, and higher-dimensional array inspection.
+- Automatic refresh with changed-cell, changed-descendant, and changed-slice indicators.
+- Public release documentation, package-content validation, and a safe pull-request CI workflow.
+
+### Security
+
+- Added a nonce-based Webview Content Security Policy and disabled local Webview resources.
+- Added runtime validation for all Variable Editor Webview messages.
+- Bounded JSON transfer, structured-value depth/node count, clipboard bytes, page cells, and slice fingerprints.
+- Coalesced page loads and deferred hidden-panel refreshes.
+- Rejected unsupported custom MATLAB classes from the detailed viewer.
+- Patched audited runtime dependencies in the extension and language server.
+- Bound the licensing UI to loopback, restricted hosts/origins, limited JSON requests, hardened session cookies, and protected its token file with user-only permissions.
+- Disabled inherited outbound MathWorks telemetry and removed its network dependency.
+
+### Changed
+
+- Clarified that this is an unofficial fork and separated fork support/security guidance from MathWorks support.
+- Made VSIX packaging rebuild both the client and language server from source before pruning server development dependencies.
+- Renamed the extension identity and replaced the official icon with a fork-owned Variable Viewer icon.
 
 ## [1.3.12] - 2026-06-15
 

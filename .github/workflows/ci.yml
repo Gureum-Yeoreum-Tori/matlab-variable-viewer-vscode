@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+            server/src/licensing/gui/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm run project-install-clean
+
+      - name: Audit locked dependencies
+        run: |
+          npm audit
+          npm audit --prefix server
+          npm audit --prefix server/src/licensing/gui
+
+      - name: Compile extension and language server
+        run: npm run compile
+
+      - name: Lint extension
+        run: npm run lint
+
+      - name: Test workspace and Variable Editor
+        run: npm run test-wsb:fast
+
+      - name: Test language server
+        run: npm test --prefix server
+
+      - name: Verify package contents
+        run: npm run package:check

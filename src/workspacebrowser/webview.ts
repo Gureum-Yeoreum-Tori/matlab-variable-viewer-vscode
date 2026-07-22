@@ -139,6 +139,10 @@ export function init (api: VsCodeApi): void {
     const table = document.querySelector('.wsb-table') as HTMLTableElement
     if (table != null) {
         table.addEventListener('click', handleTableClick)
+        table.addEventListener('dblclick', (event: MouseEvent) => {
+            const variable = (event.target as HTMLElement).closest('tr[data-var]')?.getAttribute('data-var')
+            if (variable != null) vscodeApi.postMessage({ type: 'openVariable', variable })
+        })
         table.addEventListener('focusin', handleFocusIn)
         table.addEventListener('focusout', handleFocusOut)
     }

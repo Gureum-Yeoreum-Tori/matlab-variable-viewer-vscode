@@ -1,20 +1,26 @@
 {
-	"name": "language-matlab",
-	"displayName": "MATLAB",
-	"description": "Edit MATLAB code with syntax highlighting, linting, navigation support, and more",
-	"icon": "public/L-Membrane_RGB_128x128.png",
+	"name": "matlab-variable-viewer",
+	"displayName": "MATLAB Variable Viewer (Unofficial)",
+	"description": "Inspect MATLAB workspace matrices, structures, cells, tables, and higher-dimensional arrays inside VS Code",
+	"icon": "public/variable-viewer-icon.png",
 	"license": "MIT",
-	"version": "1.3.12",
+	"version": "1.4.0",
 	"engines": {
 		"vscode": "^1.67.0"
 	},
-	"publisher": "MathWorks",
+	"publisher": "unpublished",
 	"author": {
-		"name": "The MathWorks, Inc."
+		"name": "Gureum-Yeoreum-Tori",
+		"url": "https://github.com/Gureum-Yeoreum-Tori"
 	},
 	"repository": {
-		"url": "https://github.com/mathworks/MATLAB-extension-for-vscode"
+		"type": "git",
+		"url": "https://github.com/Gureum-Yeoreum-Tori/matlab-variable-viewer-vscode.git"
 	},
+	"bugs": {
+		"url": "https://github.com/Gureum-Yeoreum-Tori/matlab-variable-viewer-vscode/issues"
+	},
+	"homepage": "https://github.com/Gureum-Yeoreum-Tori/matlab-variable-viewer-vscode#readme",
 	"categories": [
 		"Programming Languages",
 		"Snippets",
@@ -378,8 +384,8 @@
 					},
 					"MATLAB.telemetry": {
 						"type": "boolean",
-						"default": true,
-						"markdownDescription": "Help improve this extension by sending user experience information to MathWorks. For more information, see the [MathWorks Privacy Policy](https://www.mathworks.com/company/aboutus/policies_statements.html).",
+						"default": false,
+						"markdownDescription": "Retained for compatibility with the upstream extension. This unofficial fork does not transmit telemetry.",
 						"scope": "window",
 						"tags": [
 							"telemetry",
@@ -495,7 +501,7 @@
 				{
 					"id": "matlabSidebar",
 					"title": "MATLAB",
-					"icon": "./public/logo_outline.svg"
+					"icon": "./public/variable-viewer-outline.svg"
 				}
 			]
 		},
@@ -505,13 +511,13 @@
 					"id": "workspaceBrowserSidebarView",
 					"name": "Workspace",
 					"type": "webview",
-					"icon": "./public/logo_outline.svg"
+					"icon": "./public/variable-viewer-outline.svg"
 				}
 			]
 		}
 	},
 	"scripts": {
-		"vscode:prepublish": "npm run compile && cd server && npm prune --production && cd ..",
+		"vscode:prepublish": "npm run compile && npm prune --omit=dev --prefix server",
 		"compile": "tsc -p ./ && npm run copy-wsb-resources && webpack && cd server && npm run compile && cd ..",
 		"watch": "tsc -watch -p ./ && npm run copy-wsb-resources && cd server && npm run watch && webpack --watch && cd ..",
 		"test-setup": "npm run compile && npm run lint && npm run copy-test-files && npm run copy-config-files",
@@ -532,7 +538,8 @@
 		"test:fast": "npm run test-smoke:fast && npm run test-ui:fast && npm run test-unit:fast && npm run test-wsb:fast",
 		"project-install": "node ./build/projectInstall.js",
 		"project-install-clean": "node ./build/projectInstall.js --clean",
-		"package": "vsce package"
+		"package": "vsce package",
+		"package:check": "npm run vscode:prepublish && node build/checkPackage.js"
 	},
 	"devDependencies": {
 		"@types/chai": "^5.2.2",
@@ -547,7 +554,7 @@
 		"@typescript-eslint/eslint-plugin": "^5.36.1",
 		"@typescript-eslint/parser": "^5.36.1",
 		"@vscode/test-electron": "^2.5.2",
-		"@vscode/vsce": "^2.19.0",
+		"@vscode/vsce": "^3.9.2",
 		"chai": "^5.2.1",
 		"copyfiles": "^2.4.1",
 		"eslint": "^8.23.0",
@@ -569,7 +576,15 @@
 	},
 	"dependencies": {
 		"@vscode/debugadapter": "^1.56.0",
-		"node-fetch": "^2.6.6",
 		"vscode-languageclient": "^8.0.2"
+	},
+	"overrides": {
+		"brace-expansion": "2.1.2",
+		"fast-uri": "3.1.4",
+		"form-data": "4.0.6",
+		"js-yaml": "4.3.0",
+		"linkify-it": "5.0.2",
+		"markdown-it": "14.3.0",
+		"serialize-javascript": "7.0.7"
 	}
 }

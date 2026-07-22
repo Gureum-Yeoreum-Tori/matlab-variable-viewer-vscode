@@ -1,25 +1,60 @@
 # Contributing
 
->_If you believe you have discovered a security vulnerability, please **do not** open an issue or make a pull request.  Follow the instructions in the [SECURITY.md](SECURITY.md) file in this repository._
+Thank you for contributing to this unofficial fork. Changes intended for the
+official MATLAB extension should be proposed to the
+[MathWorks upstream repository](https://github.com/mathworks/MATLAB-extension-for-vscode).
 
-Thank you for your interest in contributing to a MathWorks repository!  We encourage contributions large and small to this repository.  
+## Before opening an issue
 
-**Contributions do not have to be code!** If you see a way to explain things more clearly or a great example of how to use something, please contribute it (or a link to your content).  We welcome issues even if you don't code the solution.  We also welcome pull requests to resolve issues that we haven't gotten to yet!
+- Search existing issues and confirm the problem is specific to this fork.
+- Include the operating system, VS Code version, MATLAB release, fork version,
+  variable class/size, and minimal MATLAB code that reproduces the problem.
+- Do not include proprietary workspace values, license tokens, credentials, or
+  crash logs containing private paths unless they have been sanitized.
+- Report security problems privately according to [SECURITY.md](SECURITY.md).
 
-## How to contribute
+## Development setup
 
-* **Open an issue:** Start by [creating an issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/creating-an-issue) in the repository that you're interested in.  That will start a conversation with the maintainer.  When you are creating a bug report, please include as many details as possible.  Please remember that other people do not have your background or understanding of the issue; make sure you are clear and complete in your description.
-* **Work in your own public fork:** If you choose to make a contribution, you should [fork the repository](https://docs.github.com/en/get-started/quickstart/fork-a-repo).  This creates an editable copy on GitHub where you can write, test, and refine your changes.  We suggest that you keep your changes small and focused on the issue you submitted.
-* **Sign a Contributor License Agreement (CLA):** We require that all outside contributors sign a [CLA](https://en.wikipedia.org/wiki/Contributor_License_Agreement) before we can accept your contribution.  When you create a pull request (see below), we'll reach out to you if you do not already have one on file.  Essentially, the CLA gives us permission to publish your contribution as part of the repository.
-* **Make a pull request:** "[Pull Request](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/proposing-changes-to-your-work-with-pull-requests/about-pull-requests)" is a confusing term, but it means exactly what it says:  You're requesting that the maintainers of the repository pull your changes in.  If you don't have a CLA on file, we'll reach out to you.  Your contribution will be reviewed, and we may ask you to revise your pull request based on our feedback.  Once everyone is satisfied, we'll merge your pull request into the repository.
+Clone recursively because the language server and syntax definitions are Git
+submodules:
 
-## Guidelines
+```sh
+git clone --recurse-submodules https://github.com/Gureum-Yeoreum-Tori/matlab-variable-viewer-vscode.git
+cd matlab-variable-viewer
+npm run project-install-clean
+npm run compile
+npm run test-wsb:fast
+```
 
-We don't have best practices for writing MATLAB&reg; code, but we do have some recommendations:
+Use Node.js 22, the version used in CI. Run these checks before submitting a
+pull request:
 
-* You should not have any warnings or errors in the [code analyzer report](http://www.mathworks.com/help/matlab/matlab_prog/matlab-code-analyzer-report.html)
-* [Loren Shure's blog](https://blogs.mathworks.com/loren) has [great advice on improving your MATLAB code](https://blogs.mathworks.com/loren/category/best-practice/)
-* Examples should be written as [live scripts](https://www.mathworks.com/help/matlab/matlab_prog/what-is-a-live-script-or-function.html) and then [exported as HTML](https://www.mathworks.com/help/matlab/matlab_prog/share-live-scripts.html).
-* We adhere to the [CommonMark](https://commonmark.org/) specification where it does not conflict with GitHub rendering.  If you edit your Markdown in Visual Studio Code or a similar editor, it uses [markdownlint](https://github.com/DavidAnson/markdownlint) to highlight issues in your Markdown.
+```sh
+npm run lint
+npm run test-wsb:fast
+npm test --prefix server
+npm audit
+npm audit --prefix server
+npm audit --prefix server/src/licensing/gui
+npm run package:check
+```
 
-**Again, thanks for contributing, and we look forward to your issues and pull requests!**
+`npm run package` and `npm run package:check` prune the language server's
+development dependencies. Run `npm run project-install-clean` before doing more
+server work afterward.
+
+## Pull requests
+
+- Keep a pull request focused and describe user-visible behavior.
+- Add tests for data conversion, Webview interactions, and regressions.
+- Update `CHANGELOG.md` under **Unreleased**.
+- Preserve the upstream MIT license and copyright notices on upstream files.
+  New fork-owned files should use the fork-contributor notice.
+- Do not commit `node_modules`, `out`, generated VSIX files, local settings, or
+  MATLAB workspace data.
+- Do not add arbitrary MATLAB expression text to the Variable Editor protocol.
+  Expression construction must remain behind validated identifiers and bounded
+  numeric indices.
+
+By contributing, you agree that your contribution is distributed under the
+repository's MIT license.

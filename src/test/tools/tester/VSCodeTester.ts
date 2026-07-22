@@ -104,7 +104,7 @@ export class VSCodeTester {
      * Get the status bar text to indicate if MATLAB connection
      */
     private async getConnectionStatus (): Promise<string> {
-        const statusItem = await this.statusbar.findElements(vet.By.xpath('//*[@id="MathWorks.language-matlab"]'))
+        const statusItem = await this.statusbar.findElements(vet.By.xpath('//*[contains(@id, ".matlab-variable-viewer")]'))
         const status = await statusItem[0]?.getAttribute('aria-label')
         return status
     }

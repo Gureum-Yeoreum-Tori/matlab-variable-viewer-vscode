@@ -1,6 +1,7 @@
 // Copyright 2026 The MathWorks, Inc.
 
 import * as vscode from 'vscode'
+import * as crypto from 'crypto'
 import BaseService from '../services/BaseService'
 import { Notifier } from '../commandwindow/MultiClientNotifier'
 import { MVM, MatlabMVMConnectionState } from '../commandwindow/MVM'
@@ -8,6 +9,21 @@ import Notification from '../notifications/Notifications'
 import { WorkspaceVariable, WorkspaceColumn, SavedState, ExtToWebview } from './types'
 import TelemetryLogger from '../services/telemetry/TelemetryLogger'
 import { WSB_MINIMUM_RELEASE, getUnsupportedHtml, getDisconnectedHtml, getWebviewHtml } from './templates'
+import {
+    getVariableEditorHtml,
+    boundValueForWebview,
+    isVariableEditorWebviewMessage,
+    parseMda,
+    sliceFingerprintSignatures,
+    tablePayloadToGrid,
+    valuesToTsv,
+    VariableMetadata,
+    VARIABLE_PAGE_ROWS,
+    VARIABLE_PAGE_COLUMNS,
+    VARIABLE_COPY_CELL_LIMIT,
+    VariableEditorWebviewMessage,
+    VariableSelection
+} from './variableEditor'
 
 // Default cap on how many variables the workspace browser will request
 export const WSB_DEFAULT_MAX_VARIABLES = 500
@@ -23,6 +39,30 @@ const MAX_VARIABLES_MESSAGE_TEMPLATE =
     'number of variables to display in the Workspace panel ({maxVariables}).'
 
 const WSB_STATE_KEY = 'wsb-state'
+const DIRECT_MDA_CLASSES = new Set([
+    'double', 'single',
+    'int8', 'uint8', 'int16', 'uint16', 'int32', 'uint32', 'int64', 'uint64',
+    'logical'
+])
+const JSON_VIEW_CLASSES = new Set([
+    'char', 'string', 'cell', 'struct', 'table', 'timetable',
+    'categorical', 'datetime', 'duration', 'calendarDuration'
+])
+const DIMENSION_FINGERPRINT_PAGE_LIMIT = 256
+const DIMENSION_FINGERPRINT_ELEMENT_LIMIT = 2_000_000
+const MAX_JSON_RESPONSE_CHARACTERS = 4_000_000
+const MAX_CLIPBOARD_BYTES = 4_000_000
+
+function isVariableMetadata (value: unknown): value is VariableMetadata {
+    if (value == null || typeof value !== 'object') return false
+    const metadata = value as Record<string, unknown>
+    return typeof metadata.name === 'string' &&
+        typeof metadata.class === 'string' &&
+        Array.isArray(metadata.size) &&
+        metadata.size.length >= 2 &&
+        metadata.size.length <= 32 &&
+        metadata.size.every(size => Number.isSafeInteger(size) && Number(size) >= 0)
+}
 
 // Shown immediately on webview load before the server sends column metadata.
 // Order must match the server's GetVisibleColumns response: Name, Value, Size, Class.
@@ -44,6 +84,10 @@ export default class WorkspaceBrowserProvider extends BaseService implements vsc
     // Throttle state for coalescing rapid DataChanged events
     private dataRequestPending: boolean = false
     private dataRequestTimer: ReturnType<typeof setTimeout> | undefined
+    private variableEditorRefreshTimer: ReturnType<typeof setTimeout> | undefined
+    private readonly variableEditorRefreshes = new Set<() => void>()
+    private readonly variableEditorPanels = new Set<vscode.WebviewPanel>()
+    private preferredVariableEditorPanel: vscode.WebviewPanel | undefined
 
     // Prevents duplicate max-variables warnings during a single connection session
     private maxVarsMessageShown: boolean = false
@@ -322,6 +366,7 @@ export default class WorkspaceBrowserProvider extends BaseService implements vsc
 
         this.checkMaxVariablesWarning()
         this.scheduleDataRequest()
+        this.scheduleVariableEditorRefresh()
     }
 
     // Shared logic for updating cached row/column counts from Size and DataChanged messages
@@ -355,10 +400,278 @@ export default class WorkspaceBrowserProvider extends BaseService implements vsc
             case 'stateChanged':
                 this.handleStateChanged(msg.state as SavedState)
                 break
+            case 'openVariable':
+                void this.openVariableEditor(msg.variable as string)
+                break
             case 'openMaxVariablesSetting':
                 void vscode.commands.executeCommand('workbench.action.openSettings', MAX_VARS_SETTING_ID)
                 break
         }
+    }
+
+    private async openVariableEditor (variableExpression: string): Promise<void> {
+        if (!/^[A-Za-z]\w*(?:\.[A-Za-z]\w*)*$/.test(variableExpression)) return
+        const existingPanel = this.preferredVariableEditorPanel ?? this.variableEditorPanels.values().next().value
+        const targetColumn = existingPanel?.viewColumn ?? vscode.ViewColumn.Beside
+        const panel = vscode.window.createWebviewPanel('matlabVariableEditor', `MATLAB: ${variableExpression}`, targetColumn, {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+            localResourceRoots: []
+        })
+        this.variableEditorPanels.add(panel)
+        this.preferredVariableEditorPanel = panel
+        let metadata: VariableMetadata | undefined
+        let currentPage = { rowStart: 1, columnStart: 1, pages: [] as number[] }
+        let sliceSignatures: string[] = []
+        let requestId = 0
+        let loadRunning = false
+        let autoRefreshEnabled = true
+        let refreshPendingWhileHidden = false
+        type LoadSource = 'initial' | 'manual' | 'scroll' | 'prefetch' | 'auto'
+        interface LoadRequest {
+            id: number
+            rowStart: number
+            columnStart: number
+            pages: number[]
+            refreshMetadata: boolean
+            source: LoadSource
+        }
+        let pendingLoad: LoadRequest | undefined
+
+        const evaluateMda = async (expression: string): Promise<unknown> => {
+            let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+            const request = this.mvm.feval('evalin', 1, ['base', expression], false)
+            const timeout = new Promise<never>((resolve, reject) => {
+                timeoutHandle = setTimeout(() => reject(new Error('Timed out after 5 seconds')), 5000)
+            })
+            try {
+                const response = await Promise.race([request, timeout])
+                if (!('result' in response)) throw new Error(this.extractErrorMessage(response.error))
+                return parseMda(response.result[0])
+            } finally {
+                if (timeoutHandle != null) clearTimeout(timeoutHandle)
+            }
+        }
+
+        const evaluateJson = async (expression: string): Promise<unknown> => {
+            const decoded = await evaluateMda(`feval(@(s)s(1:min(numel(s),${MAX_JSON_RESPONSE_CHARACTERS + 1})),jsonencode(${expression}))`)
+            const json = Array.isArray(decoded) ? decoded.join('') : String(decoded)
+            if (json.length > MAX_JSON_RESPONSE_CHARACTERS) {
+                throw new Error(`Variable data exceeds the ${Math.round(MAX_JSON_RESPONSE_CHARACTERS / 1_000_000)} MB viewer limit`)
+            }
+            return JSON.parse(json)
+        }
+
+        const loadPage = async (loadRequest: LoadRequest): Promise<void> => {
+            const { id: thisRequestId, rowStart, columnStart, pages, refreshMetadata, source } = loadRequest
+            try {
+                let pageMetadata = metadata
+                if (pageMetadata == null || refreshMetadata) {
+                    const metadataValue = await evaluateJson(`struct('name','${variableExpression}','class',class(${variableExpression}),'size',size(${variableExpression}))`)
+                    if (!isVariableMetadata(metadataValue)) throw new Error('MATLAB returned invalid variable metadata')
+                    pageMetadata = metadataValue
+                }
+                if (thisRequestId !== requestId) return
+                if (pageMetadata == null) throw new Error('Variable metadata is unavailable')
+                if (!DIRECT_MDA_CLASSES.has(pageMetadata.class) && !JSON_VIEW_CLASSES.has(pageMetadata.class)) {
+                    throw new Error(`Class '${pageMetadata.class}' is not supported by the Variable Editor`)
+                }
+                metadata = pageMetadata
+                const [rowCount = 1, columnCount = 1, ...pageSizes] = pageMetadata.size
+                const sliceCount = pageSizes.reduce((total, size) => total * size, 1)
+                const elementCount = rowCount * columnCount * sliceCount
+                const canFingerprintSlices = pageSizes.length > 0 && sliceCount > 0 && rowCount * columnCount > 0 &&
+                    sliceCount <= DIMENSION_FINGERPRINT_PAGE_LIMIT &&
+                    elementCount <= DIMENSION_FINGERPRINT_ELEMENT_LIMIT &&
+                    DIRECT_MDA_CLASSES.has(pageMetadata.class)
+                if (canFingerprintSlices && (refreshMetadata || sliceSignatures.length !== sliceCount)) {
+                    const sliceLength = rowCount * columnCount
+                    const fingerprintExpression = `feval(@(x,w)struct('sumReal',sum(real(x),1,'omitnan'),'sumImag',sum(imag(x),1,'omitnan'),'sumAbs',sum(abs(x),1,'omitnan'),'weightedReal',sum(w.*real(x),1,'omitnan'),'weightedImag',sum(w.*imag(x),1,'omitnan'),'nanCount',sum(isnan(x),1)),reshape(double(${variableExpression}),[],${sliceCount}),(1:${sliceLength})')`
+                    sliceSignatures = sliceFingerprintSignatures(
+                        await evaluateJson(fingerprintExpression) as Record<string, unknown>,
+                        sliceCount
+                    )
+                } else if (!canFingerprintSlices) {
+                    sliceSignatures = []
+                }
+                if (thisRequestId !== requestId) return
+                const safeRow = Math.max(1, Math.min(rowStart, rowCount))
+                const safeColumn = Math.max(1, Math.min(columnStart, columnCount))
+                const rowEnd = Math.min(rowCount, safeRow + VARIABLE_PAGE_ROWS - 1)
+                const columnEnd = Math.min(columnCount, safeColumn + VARIABLE_PAGE_COLUMNS - 1)
+                const pageIndices = pageSizes.map((size, index) => Math.max(1, Math.min(pages[index] ?? 1, size)))
+                currentPage = { rowStart: safeRow, columnStart: safeColumn, pages: pageIndices }
+                const suffix = pageIndices.map(index => `,${index}`).join('')
+                let sliceExpression = `${variableExpression}(${safeRow}:${rowEnd},${safeColumn}:${columnEnd}${suffix})`
+                let columnNames: unknown
+                let rowNames: unknown
+                let values: unknown
+                if (pageMetadata.class === 'table' || pageMetadata.class === 'timetable') {
+                    const tableSlice = sliceExpression
+                    const columnNameExpression = `${variableExpression}.Properties.VariableNames(${safeColumn}:${columnEnd})`
+                    const rowNameExpression = pageMetadata.class === 'timetable'
+                        ? `cellstr(string(${variableExpression}.Properties.RowTimes(${safeRow}:${rowEnd})))`
+                        : `subsref([${variableExpression}.Properties.RowNames;cellstr(string((1:height(${variableExpression}))'))],substruct('()',{${safeRow}:${rowEnd}}))`
+                    sliceExpression = `struct('columnNames',{${columnNameExpression}},'rowNames',{${rowNameExpression}},'rows',{table2struct(${tableSlice})})`
+                    const tablePage = tablePayloadToGrid(await evaluateJson(sliceExpression) as Record<string, unknown>)
+                    columnNames = tablePage.columnNames
+                    rowNames = tablePage.rowNames
+                    values = boundValueForWebview(tablePage.values)
+                } else {
+                    values = DIRECT_MDA_CLASSES.has(pageMetadata.class)
+                        ? await evaluateMda(sliceExpression)
+                        : boundValueForWebview(await evaluateJson(sliceExpression))
+                }
+                if (thisRequestId !== requestId) return
+                void panel.webview.postMessage({
+                    type: 'data',
+                    metadata: pageMetadata,
+                    values,
+                    rowStart: safeRow,
+                    columnStart: safeColumn,
+                    rowEnd,
+                    columnEnd,
+                    pageIndices,
+                    columnNames,
+                    rowNames,
+                    sliceSignatures,
+                    source,
+                    updatedAt: Date.now()
+                })
+            } catch (error) {
+                if (thisRequestId !== requestId) return
+                const message = error instanceof Error ? error.message : this.extractErrorMessage(error)
+                void panel.webview.postMessage({ type: 'error', message, source })
+            }
+        }
+
+        const drainLoadQueue = async (): Promise<void> => {
+            if (loadRunning) return
+            loadRunning = true
+            try {
+                while (pendingLoad != null) {
+                    const nextLoad = pendingLoad
+                    pendingLoad = undefined
+                    await loadPage(nextLoad)
+                }
+            } finally {
+                loadRunning = false
+            }
+        }
+
+        const scheduleLoadPage = (
+            rowStart = 1,
+            columnStart = 1,
+            pages: number[] = [],
+            refreshMetadata = false,
+            source: LoadSource = 'manual'
+        ): void => {
+            pendingLoad = {
+                id: ++requestId,
+                rowStart,
+                columnStart,
+                pages: [...pages],
+                refreshMetadata,
+                source
+            }
+            void drainLoadQueue()
+        }
+
+        const copySelection = async (selection: VariableSelection | undefined, pages: number[] = []): Promise<void> => {
+            if (selection == null) return
+            try {
+                let copyMetadata = metadata
+                if (copyMetadata == null) {
+                    const metadataValue = await evaluateJson(`struct('name','${variableExpression}','class',class(${variableExpression}),'size',size(${variableExpression}))`)
+                    if (!isVariableMetadata(metadataValue)) throw new Error('MATLAB returned invalid variable metadata')
+                    copyMetadata = metadataValue
+                    metadata = copyMetadata
+                }
+                if (!DIRECT_MDA_CLASSES.has(copyMetadata.class) && !JSON_VIEW_CLASSES.has(copyMetadata.class)) {
+                    throw new Error(`Class '${copyMetadata.class}' is not supported by the Variable Editor`)
+                }
+                const [rowCount = 1, columnCount = 1, ...pageSizes] = copyMetadata.size
+                const rowStart = Math.max(1, Math.min(selection.rowStart, selection.rowEnd, rowCount))
+                const rowEnd = Math.max(rowStart, Math.min(Math.max(selection.rowStart, selection.rowEnd), rowCount))
+                const columnStart = Math.max(1, Math.min(selection.columnStart, selection.columnEnd, columnCount))
+                const columnEnd = Math.max(columnStart, Math.min(Math.max(selection.columnStart, selection.columnEnd), columnCount))
+                const cellCount = (rowEnd - rowStart + 1) * (columnEnd - columnStart + 1)
+                if (cellCount > VARIABLE_COPY_CELL_LIMIT) {
+                    throw new Error(`Selection contains ${cellCount.toLocaleString()} cells; the copy limit is ${VARIABLE_COPY_CELL_LIMIT.toLocaleString()}.`)
+                }
+                const pageIndices = pageSizes.map((size, index) => Math.max(1, Math.min(pages[index] ?? 1, size)))
+                const suffix = pageIndices.map(index => `,${index}`).join('')
+                let sliceExpression = `${variableExpression}(${rowStart}:${rowEnd},${columnStart}:${columnEnd}${suffix})`
+                let values: unknown
+                if (copyMetadata.class === 'table' || copyMetadata.class === 'timetable') {
+                    const columnNameExpression = `${variableExpression}.Properties.VariableNames(${columnStart}:${columnEnd})`
+                    sliceExpression = `struct('columnNames',{${columnNameExpression}},'rows',{table2struct(${sliceExpression})})`
+                    values = tablePayloadToGrid(await evaluateJson(sliceExpression) as Record<string, unknown>).values
+                } else {
+                    values = DIRECT_MDA_CLASSES.has(copyMetadata.class)
+                        ? await evaluateMda(sliceExpression)
+                        : await evaluateJson(sliceExpression)
+                }
+                const clipboardText = valuesToTsv(values, rowEnd - rowStart + 1, columnEnd - columnStart + 1)
+                if (Buffer.byteLength(clipboardText, 'utf8') > MAX_CLIPBOARD_BYTES) {
+                    throw new Error(`Copied data exceeds the ${Math.round(MAX_CLIPBOARD_BYTES / 1_000_000)} MB clipboard limit`)
+                }
+                await vscode.env.clipboard.writeText(clipboardText)
+                void panel.webview.postMessage({ type: 'copyComplete', message: `Copied ${cellCount.toLocaleString()} cells` })
+            } catch (error) {
+                const message = error instanceof Error ? error.message : this.extractErrorMessage(error)
+                void panel.webview.postMessage({ type: 'copyError', message })
+            }
+        }
+
+        const refresh = (): void => {
+            if (!autoRefreshEnabled) return
+            if (!panel.visible) {
+                refreshPendingWhileHidden = true
+                return
+            }
+            refreshPendingWhileHidden = false
+            scheduleLoadPage(currentPage.rowStart, currentPage.columnStart, currentPage.pages, true, 'auto')
+        }
+        this.variableEditorRefreshes.add(refresh)
+        panel.onDidDispose(() => {
+            this.variableEditorRefreshes.delete(refresh)
+            this.variableEditorPanels.delete(panel)
+            if (this.preferredVariableEditorPanel === panel) {
+                this.preferredVariableEditorPanel = this.variableEditorPanels.values().next().value
+            }
+        })
+        panel.onDidChangeViewState(({ webviewPanel }) => {
+            if (webviewPanel.active) this.preferredVariableEditorPanel = webviewPanel
+            if (webviewPanel.visible && refreshPendingWhileHidden) refresh()
+        })
+
+        panel.webview.onDidReceiveMessage((rawMessage: unknown) => {
+            if (!isVariableEditorWebviewMessage(rawMessage)) {
+                void panel.webview.postMessage({ type: 'error', message: 'Rejected an invalid Variable Editor request', source: 'manual' })
+                return
+            }
+            const message: VariableEditorWebviewMessage = rawMessage
+            if (message.type === 'page') {
+                const expectedPages = metadata?.size.slice(2).length
+                if (expectedPages != null && message.pages?.length !== expectedPages) {
+                    void panel.webview.postMessage({ type: 'error', message: 'Rejected an invalid dimension selection', source: 'manual' })
+                    return
+                }
+                scheduleLoadPage(message.rowStart, message.columnStart, message.pages, false, message.source ?? 'manual')
+            }
+            if (message.type === 'ready') {
+                autoRefreshEnabled = message.autoRefresh ?? true
+                scheduleLoadPage(currentPage.rowStart, currentPage.columnStart, currentPage.pages, false, 'initial')
+            }
+            if (message.type === 'autoRefresh') {
+                autoRefreshEnabled = message.enabled ?? true
+                if (autoRefreshEnabled) refresh()
+            }
+            if (message.type === 'copySelection') void copySelection(message.selection, message.pages)
+            if (message.type === 'openNested' && message.expression != null) void this.openVariableEditor(message.expression)
+        })
+        panel.webview.html = getVariableEditorHtml(variableExpression, crypto.randomBytes(18).toString('base64'))
     }
 
     // Send cached columns, data, and state to the webview when it signals readiness
@@ -515,6 +828,16 @@ export default class WorkspaceBrowserProvider extends BaseService implements vsc
             this.dataRequestPending = false
             this.dataRequestTimer = undefined
             this.requestData()
+        }, DATA_THROTTLE_MS)
+    }
+
+    // Refresh open variable editors after workspace mutations, capped at roughly
+    // three refreshes per second even when MATLAB emits rapid DataChanged events.
+    private scheduleVariableEditorRefresh (): void {
+        if (this.variableEditorRefreshes.size === 0 || this.variableEditorRefreshTimer != null) return
+        this.variableEditorRefreshTimer = setTimeout(() => {
+            this.variableEditorRefreshTimer = undefined
+            for (const refresh of this.variableEditorRefreshes) refresh()
         }, DATA_THROTTLE_MS)
     }
 
